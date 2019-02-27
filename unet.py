@@ -16,66 +16,66 @@ image_transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((
 mask_transform=transforms.Compose([transforms.ToTensor()])
 trainset=my_data(transform=image_transform,target_transform=mask_transform)
 testset=my_data(image_set='test',transform=image_transform,target_transform=mask_transform)
-trainload=torch.utils.data.DataLoader(trainset,batch_size=1)
+trainload=torch.utils.data.DataLoader(trainset,batch_size=4)
 testload=torch.utils.data.DataLoader(testset,batch_size=1)
 device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # device=torch.device('cpu')
 print (device)
 
 dtype=torch.float32
-class deconv(nn.Module):
-    def __init__(self,inchannel,middlechannel,outchannel,transpose=False):
-        super(deconv,self).__init__()
-        if transpose:
-            self.block=nn.Sequential(nn.Conv2d(inchannel,middlechannel,3,padding=1),
-                                   nn.BatchNorm2d(middlechannel),
-                                   nn.ReLU(inplace=True),
-                                   # nn.Conv2d(middlechannel,middlechannel,3,padding=1),
-                                   # nn.BatchNorm2d(middlechannel),
-                                   # nn.ReLU(inplace=True),
-                                   # nn.ConvTranspose2d(middlechannel,outchannel,3,2), # use out_pading to minus one of padding
-                                    nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1) # use out_pading to minus one of padding
-
-                                     )
-        else:
-            self.block=nn.Sequential(nn.Conv2d(inchannel,middlechannel,3,padding=1),
-                                   nn.BatchNorm2d(middlechannel),
-                                   nn.ReLU(inplace=True),
-                                   # nn.Conv2d(middlechannel,middlechannel,3,padding=0),
-                                   # nn.BatchNorm2d(middlechannel),
-                                   # nn.ReLU(inplace=True),
-                                   nn.Conv2d(middlechannel,outchannel,1),         #since unsampling cann't change the channel num ,have to change channel num before next block
-                                   nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True) # transpose is upsample and conv, now try conv and upsample need to confirm
-                                     )
-    def forward(self, input):
-        return self.block(input)
-class up(nn.Module):
-    def __init__(self,inchannel_low,inchannel_same,middlechannel,outchannel,transpose=False):
-        super(up,self).__init__()
-        if  transpose:
-            self.block=nn.ConvTranspose2d(inchannel_low,middlechannel,3,2,1,1)
-            self.conv=nn.Sequential(nn.Conv2d(middlechannel+inchannel_same,outchannel,3,padding=1),
-                                nn.BatchNorm2d(outchannel),
-                                nn.ReLU(inplace=True),
-                                # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
-                                )
-        else:
-            self.block=nn.Sequential(nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True),
-                                     nn.Conv2d(inchannel_low,middlechannel,3,padding=1),
-                                     nn.BatchNorm2d(middlechannel),
-                                     nn.ReLU(inplace=True),)
-            self.conv=nn.Sequential(
-                                nn.Conv2d(middlechannel+inchannel_same,outchannel,3,padding=1),
-                                nn.BatchNorm2d(outchannel),
-                                nn.ReLU(inplace=True)
-                                # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
-                              )
-
-    def forward(self, uplayer,samlayer):
-        self.up=self.block(uplayer)
-        self.middle=torch.cat((self.up,samlayer),dim=1)
-        self.out=self.conv(self.middle)
-        return self.out
+# class deconv(nn.Module):
+#     def __init__(self,inchannel,middlechannel,outchannel,transpose=False):
+#         super(deconv,self).__init__()
+#         if transpose:
+#             self.block=nn.Sequential(nn.Conv2d(inchannel,middlechannel,3,padding=1),
+#                                    nn.BatchNorm2d(middlechannel),
+#                                    nn.ReLU(inplace=True),
+#                                    # nn.Conv2d(middlechannel,middlechannel,3,padding=1),
+#                                    # nn.BatchNorm2d(middlechannel),
+#                                    # nn.ReLU(inplace=True),
+#                                    # nn.ConvTranspose2d(middlechannel,outchannel,3,2), # use out_pading to minus one of padding
+#                                     nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1) # use out_pading to minus one of padding
+#
+#                                      )
+#         else:
+#             self.block=nn.Sequential(nn.Conv2d(inchannel,middlechannel,3,padding=1),
+#                                    nn.BatchNorm2d(middlechannel),
+#                                    nn.ReLU(inplace=True),
+#                                    # nn.Conv2d(middlechannel,middlechannel,3,padding=0),
+#                                    # nn.BatchNorm2d(middlechannel),
+#                                    # nn.ReLU(inplace=True),
+#                                    nn.Conv2d(middlechannel,outchannel,1),         #since unsampling cann't change the channel num ,have to change channel num before next block
+#                                    nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True) # transpose is upsample and conv, now try conv and upsample need to confirm
+#                                      )
+#     def forward(self, input):
+#         return self.block(input)
+# class up(nn.Module):
+#     def __init__(self,inchannel_low,inchannel_same,middlechannel,outchannel,transpose=False):
+#         super(up,self).__init__()
+#         if  transpose:
+#             self.block=nn.ConvTranspose2d(inchannel_low,middlechannel,3,2,1,1)
+#             self.conv=nn.Sequential(nn.Conv2d(middlechannel+inchannel_same,outchannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True),
+#                                 # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
+#                                 )
+#         else:
+#             self.block=nn.Sequential(nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True),
+#                                      nn.Conv2d(inchannel_low,middlechannel,3,padding=1),
+#                                      nn.BatchNorm2d(middlechannel),
+#                                      nn.ReLU(inplace=True),)
+#             self.conv=nn.Sequential(
+#                                 nn.Conv2d(middlechannel+inchannel_same,outchannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True)
+#                                 # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
+#                               )
+#
+#     def forward(self, uplayer,samlayer):
+#         self.up=self.block(uplayer)
+#         self.middle=torch.cat((self.up,samlayer),dim=1)
+#         self.out=self.conv(self.middle)
+#         return self.out
 class conv(nn.Module):
     def __init__(self,inchannel,middlechannel,outchannel):
         super(conv,self).__init__()
@@ -135,7 +135,7 @@ class Diceloss(nn.Module):
     def dice_coef(self,x,y):
         numerator=2*torch.sum(x*y)+0.0001
         denominator=torch.sum(x**2)+torch.sum(y**2)+0.0001
-        return numerator/denominator
+        return numerator/denominator/float(len(y))
     def forward(self, x,y):
         return 1-self.dice_coef(x,y)
 class Bce_Diceloss(nn.Module):
@@ -174,21 +174,21 @@ def train(epoch):
     model.train()
     model=model.to(device)
     criterion=Diceloss()
-    optimize=torch.optim.Adam(model.parameters(),lr=0.0001)
+    optimize=torch.optim.Adam(model.parameters(),lr=0.001)
     store_loss=[]
     for i in range(epoch):
         tmp=0
         for image,mask in trainload:
             image,mask=image.to(device,dtype=dtype),mask.to(device,dtype=dtype)
             optimize.zero_grad()
-            l1,l2,l3,l4,l5=model(image)
-            loss_list=list(map(lambda x,y:criterion(x,y),[l1,l2,l3,l4,l5],[mask]*5))
+            l1,l2,l3,l4=model(image)
+            loss_list=list(map(lambda x,y:criterion(x,y),[l1,l2,l3,l4,],[mask]*4))
             tmp=reduce(lambda x,y:x+y,loss_list)
-            loss=tmp/5
+            loss=tmp/4
             loss.backward()
             optimize.step()
             tmp=loss.data
-            print ("loss ",tmp)
+            # print ("loss ",tmp)
             # break
         store_loss.append(tmp)
         print ("{0} epoch ,loss is {1}".format(i,tmp))
@@ -217,7 +217,6 @@ def test(model):
             l2_list.append(l2)
             l3_list.append(l3)
             l4_list.append(l4)
-            l5_list.append(output)
 
 
 
@@ -225,7 +224,7 @@ def test(model):
             pred.append(label.to(torch.long))
             img.append(image.cpu())
             mask.append(mask_img)
-    return torch.cat(img),torch.cat(pred),torch.cat(mask),[l1_list,l2_list,l3_list,l4_list,l5_list]
+    return torch.cat(img),torch.cat(pred),torch.cat(mask),[l1_list,l2_list,l3_list,l4_list]
 
 def picture(img,pred,mask):
     # all must bu numpy object
@@ -264,36 +263,36 @@ def my_iou(label_pred,label_mask):
     for i,j in zip(label_pred.to(torch.float),label_mask):
         iou.append((i*j).sum()/(i.sum()+j.sum()-(i*j).sum()))
     return iou
-def train_unet(epoch):
 
-    model=UNET()
-    model.train()
-    model=model.to(device)
-    criterion=Diceloss()
-    optimise=torch.optim.Adam(model.parameters(),1e-3)
-    tmp=0
-    for i in range(epoch):
-        for img,mask in trainload:
-            img,mask=img.to(device,dtype=dtype),mask.to(device,dtype=dtype)
-            optimise.zero_grad()
-            output=model(img)
-            loss=criterion(output,mask)
-            loss.backward()
-            optimise.step()
-            tmp=loss.data
-            # print (loss.data)
-        print ('num {0} loss {1}'.format(i,tmp))
-    return model
 
-# from torchviz import make_dot
-# a=torch.zeros(1,3,320,240)
-# m=U_plus()
-# d=m(a)
-# make_dot(d,params=dict(m.named_parameters()))
-
-# model,loss_list=train(60)
+# model,loss_list=train(20)
 # torch.save(model.state_dict(),'uplus')
-# model=U_plus()
+model=UPP()
+# model.load_state_dict(torch.load('uplus'))
+
+model.train()
+model=model.to(device)
+criterion=Diceloss()
+optimize=torch.optim.Adam(model.parameters(),lr=0.001)
+store_loss=[]
+for i in range(20):
+    tmp=0
+    for image,mask in trainload:
+        image,mask=image.to(device,dtype=dtype),mask.to(device,dtype=dtype)
+        optimize.zero_grad()
+        l1,l2,l3,l4=model(image)
+        loss_list=list(map(lambda x,y:criterion(x,y),[l1,l2,l3,l4,],[mask]*4))
+        tmp=reduce(lambda x,y:x+y,loss_list)
+        loss=tmp/4
+        loss.backward()
+        optimize.step()
+        tmp=loss.data
+        # print ("loss ",tmp)
+        # break
+    store_loss.append(tmp)
+    print ("{0} epoch ,loss is {1}".format(i,tmp))
+torch.save(model.state_dict(),'uplus')
+# model=UPP()
 # model.load_state_dict(torch.load('uplus',map_location='cpu'))
 # img,pred,mask,l=test(model)
 # ap,iou,hist,tmp=label_acc_score(mask,pred,2)
@@ -305,26 +304,7 @@ def train_unet(epoch):
 # tmp(a)
 
 #%%
-def test_unet(model):
-    img=[]
-    pred=[]
-    mask=[]
 
-    with torch.no_grad():
-        model.eval()
-        model=model.to(device)
-        for image,mask_img in testload:
-            image=image.to(device,dtype=dtype)
-            output=model(image)
-            label=output.cpu()>0.5
-            # l1_list.append((l1>0.5).to(torch.long))
-            # l2_list.append((l2>0.5).to(torch.long))
-            # l3_list.append((l3>0.5).to(torch.long))
-            # l4_list.append((l4>0.5).to(torch.long))
-            pred.append(label.to(torch.long))
-            img.append(image.cpu())
-            mask.append(mask_img)
-    return torch.cat(img),torch.cat(pred),torch.cat(mask)
 # model=train_unet(20)
 # torch.save(model.state_dict(),'unet')
 # model=UNET()
