@@ -16,66 +16,13 @@ image_transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((
 mask_transform=transforms.Compose([transforms.ToTensor()])
 trainset=my_data(transform=image_transform,target_transform=mask_transform)
 testset=my_data(image_set='test',transform=image_transform,target_transform=mask_transform)
-trainload=torch.utils.data.DataLoader(trainset,batch_size=4)
+trainload=torch.utils.data.DataLoader(trainset,batch_size=8)
 testload=torch.utils.data.DataLoader(testset,batch_size=1)
 device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 # device=torch.device('cpu')
 print (device)
 
 dtype=torch.float32
-# class deconv(nn.Module):
-#     def __init__(self,inchannel,middlechannel,outchannel,transpose=False):
-#         super(deconv,self).__init__()
-#         if transpose:
-#             self.block=nn.Sequential(nn.Conv2d(inchannel,middlechannel,3,padding=1),
-#                                    nn.BatchNorm2d(middlechannel),
-#                                    nn.ReLU(inplace=True),
-#                                    # nn.Conv2d(middlechannel,middlechannel,3,padding=1),
-#                                    # nn.BatchNorm2d(middlechannel),
-#                                    # nn.ReLU(inplace=True),
-#                                    # nn.ConvTranspose2d(middlechannel,outchannel,3,2), # use out_pading to minus one of padding
-#                                     nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1) # use out_pading to minus one of padding
-#
-#                                      )
-#         else:
-#             self.block=nn.Sequential(nn.Conv2d(inchannel,middlechannel,3,padding=1),
-#                                    nn.BatchNorm2d(middlechannel),
-#                                    nn.ReLU(inplace=True),
-#                                    # nn.Conv2d(middlechannel,middlechannel,3,padding=0),
-#                                    # nn.BatchNorm2d(middlechannel),
-#                                    # nn.ReLU(inplace=True),
-#                                    nn.Conv2d(middlechannel,outchannel,1),         #since unsampling cann't change the channel num ,have to change channel num before next block
-#                                    nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True) # transpose is upsample and conv, now try conv and upsample need to confirm
-#                                      )
-#     def forward(self, input):
-#         return self.block(input)
-# class up(nn.Module):
-#     def __init__(self,inchannel_low,inchannel_same,middlechannel,outchannel,transpose=False):
-#         super(up,self).__init__()
-#         if  transpose:
-#             self.block=nn.ConvTranspose2d(inchannel_low,middlechannel,3,2,1,1)
-#             self.conv=nn.Sequential(nn.Conv2d(middlechannel+inchannel_same,outchannel,3,padding=1),
-#                                 nn.BatchNorm2d(outchannel),
-#                                 nn.ReLU(inplace=True),
-#                                 # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
-#                                 )
-#         else:
-#             self.block=nn.Sequential(nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True),
-#                                      nn.Conv2d(inchannel_low,middlechannel,3,padding=1),
-#                                      nn.BatchNorm2d(middlechannel),
-#                                      nn.ReLU(inplace=True),)
-#             self.conv=nn.Sequential(
-#                                 nn.Conv2d(middlechannel+inchannel_same,outchannel,3,padding=1),
-#                                 nn.BatchNorm2d(outchannel),
-#                                 nn.ReLU(inplace=True)
-#                                 # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
-#                               )
-#
-#     def forward(self, uplayer,samlayer):
-#         self.up=self.block(uplayer)
-#         self.middle=torch.cat((self.up,samlayer),dim=1)
-#         self.out=self.conv(self.middle)
-#         return self.out
 class conv(nn.Module):
     def __init__(self,inchannel,middlechannel,outchannel):
         super(conv,self).__init__()
@@ -85,6 +32,34 @@ class conv(nn.Module):
                               nn.BatchNorm2d(outchannel))
     def forward(self, input):
         return  self.l1(input)
+class up(nn.Module):
+    def __init__(self,inchannel_low,inchannel_same,middlechannel,outchannel,transpose=False):
+        super(up,self).__init__()
+        if  transpose:
+            self.block=nn.ConvTranspose2d(inchannel_low,middlechannel,2,2)
+            self.conv=nn.Sequential(nn.Conv2d(inchannel_same+middlechannel,outchannel,3,padding=1),
+                                nn.BatchNorm2d(outchannel),
+                                nn.ReLU(inplace=True),
+                                nn.Conv2d(outchannel,outchannel,3,padding=1),
+                                nn.BatchNorm2d(outchannel),
+                                nn.ReLU(inplace=True),
+                                # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
+                                )
+        # else:
+            # self.block = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+            #                            nn.Conv2d(inchannel_low, middlechannel, 3, padding=1),
+            #                            nn.BatchNorm2d(middlechannel),
+            #                            nn.ReLU(inplace=True), )
+            # self.conv=nn.Sequential(nn.Conv2d(inchannel_same+middlechannel,outchannel,3,padding=1),
+            #                     nn.BatchNorm2d(outchannel),
+            #                     nn.ReLU(inplace=True),
+            #
+            #                     # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
+            #                   )
+    def forward(self, uplayer,samlayer): #the uplayer need to be cropped and upsample
+        tmp=self.block(uplayer)  # if block is transpose then need crop or it needs  pad(self.middle,(0,1,0,0),mode='replicate')
+        return self.conv(torch.cat((tmp,samlayer),dim=1))
+
 class UPP(nn.Module):
     def __init__(self):
         super(UPP,self).__init__()
@@ -93,18 +68,17 @@ class UPP(nn.Module):
         self.l2_0=conv(64,128,128)
         self.l3_0=conv(128,256,256)
         self.l4_0=conv(256,512,512)
-        self.l3_1=conv(512+256,512,256)
-        self.l2_1=conv(256+128,256,128)
-        self.l2_2=conv(128+128+256,256,128)
-        self.l1_1=conv(128+64,128,64)
-        self.l1_2=conv(128+64+64,128,64)
-        self.l1_3=conv(128+64+64+64,128,64)
-        self.l0_1=conv(64+32,64,32)
-        self.l0_2=conv(64+32+32,64,32)
-        self.l0_3=conv(64+32+32+32,64,32)
-        self.l0_4=conv(64+32+32+32+32,64,32)
+        self.l3_1=up(512,256,256,256,True)
+        self.l2_1=up(256,128,128,128,True)
+        self.l2_2=up(256,128+128,128,128,True)
+        self.l1_1=up(128,64,64,64,True)
+        self.l1_2=up(128,64+64,64,64,True)
+        self.l1_3=up(128,64+64+64,64,64,True)
+        self.l0_1=up(64,32,32,32,True)
+        self.l0_2=up(64,32+32,32,32,True)
+        self.l0_3=up(64,32+32+32,32,32,True)
+        self.l0_4=up(64,32+32+32+32,32,32,True)
         self.pool=nn.MaxPool2d(2)
-        self.up=nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
         self.f1 =nn.Conv2d(32,1,1)
         self.f2 =nn.Conv2d(32,1,1)
         self.f3 =nn.Conv2d(32,1,1)
@@ -115,17 +89,20 @@ class UPP(nn.Module):
         l2_0=self.l2_0(self.pool(l1_0))
         l3_0=self.l3_0(self.pool(l2_0))
         l4_0=self.l4_0(self.pool(l3_0))
-        l3_1=self.l3_1(torch.cat((self.up(l4_0),l3_0),dim=1))
-        l2_1=self.l2_1(torch.cat((self.up(l3_0),l2_0),dim=1))
-        l2_2=self.l2_2(torch.cat((self.up(l3_1),l2_0,l2_1),dim=1))
-        l1_1=self.l1_1(torch.cat((self.up(l2_0),l1_0),dim=1))
-        l1_2=self.l1_2(torch.cat((self.up(l2_1),l1_0,l1_1),dim=1))
-        l1_3=self.l1_3(torch.cat((self.up(l2_2),l1_0,l1_1,l1_2),dim=1))
-        l0_1=self.l0_1(torch.cat((self.up(l1_0),l0_0),dim=1))
-        l0_2=self.l0_2(torch.cat((self.up(l1_1),l0_0,l0_1),dim=1))
-        l0_3=self.l0_3(torch.cat((self.up(l1_2),l0_0,l0_1,l0_2),dim=1))
-        l0_4=self.l0_4(torch.cat((self.up(l1_3),l0_0,l0_1,l0_2,l0_3),dim=1))
-        return self.f1(l0_1),self.f2(l0_2),self.f3(l0_3),self.f4(l0_4)
+        l3_1=self.l3_1(l4_0,l3_0)
+        l2_1=self.l2_1(l3_0,l2_0)
+        l2_2=self.l2_2(l3_1,torch.cat((l2_0,l2_1),dim=1))
+        l1_1=self.l1_1(l2_0,l1_0)
+        l1_2=self.l1_2(l2_1,torch.cat((l1_0,l1_1),dim=1))
+        l1_3=self.l1_3(l2_2,torch.cat((l1_0,l1_1,l1_2),dim=1))
+        l0_1=self.l0_1(l1_0,l0_0)
+        l0_2=self.l0_2(l1_1,torch.cat((l0_0,l0_1),dim=1))
+        l0_3=self.l0_3(l1_2,torch.cat((l0_0,l0_1,l0_2),dim=1))
+        l0_4=self.l0_4(l1_3,torch.cat((l0_0,l0_1,l0_2,l0_3),dim=1))
+        return torch.sigmoid(self.f1(l0_1)),\
+               torch.sigmoid(self.f2(l0_2)),\
+               torch.sigmoid(self.f3(l0_3)),\
+               torch.sigmoid(self.f4(l0_4))
 
 
 
@@ -272,7 +249,7 @@ model=UPP()
 
 model.train()
 model=model.to(device)
-criterion=Diceloss()
+criterion=Bce_Diceloss()
 optimize=torch.optim.Adam(model.parameters(),lr=0.001)
 store_loss=[]
 for i in range(20):
@@ -294,8 +271,8 @@ for i in range(20):
 torch.save(model.state_dict(),'uplus')
 # model=UPP()
 # model.load_state_dict(torch.load('uplus',map_location='cpu'))
-# img,pred,mask,l=test(model)
-# ap,iou,hist,tmp=label_acc_score(mask,pred,2)
+img,pred,mask,l=test(model)
+ap,iou,hist,tmp=label_acc_score(mask,pred,2)
 # # iu=my_iou(pred,mask)
 # torch_pic(img[0:4],pred[0:4].to(torch.long),mask[0:4].to(torch.long))
 
