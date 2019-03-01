@@ -18,8 +18,8 @@ trainset=my_data(transform=image_transform,target_transform=mask_transform)
 testset=my_data(image_set='test',transform=image_transform,target_transform=mask_transform)
 trainload=torch.utils.data.DataLoader(trainset,batch_size=8)
 testload=torch.utils.data.DataLoader(testset,batch_size=1)
-# device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-device=torch.device('cpu')
+device=torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+# device=torch.device('cpu')
 print (device)
 
 dtype=torch.float32
@@ -84,6 +84,41 @@ class pad_up(nn.Module):
         tmp=self.block(uplayer)  # if block is transpose then need crop or it needs  pad(self.middle,(0,1,0,0),mode='replicate')
         uplayer=torch.nn.functional.pad(tmp,[0,1,0,0],mode='replicate')
         return self.conv(torch.cat((uplayer,samlayer),dim=1))
+
+class crop_up(nn.Module):
+    def __init__(self, inchannel_low, inchannel_same, middlechannel, outchannel, transpose=False):
+        super(crop_up, self).__init__()
+        if transpose:
+            self.block = nn.ConvTranspose2d(inchannel_low, middlechannel, 3, 2)
+            self.conv = nn.Sequential(nn.Conv2d(inchannel_same + middlechannel, outchannel, 3, padding=1),
+                                      nn.BatchNorm2d(outchannel),
+                                      nn.ReLU(inplace=True),
+                                      # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
+                                      )
+        else:
+            self.block = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+                                       nn.Conv2d(inchannel_low, middlechannel, 3, padding=1),
+                                       nn.BatchNorm2d(middlechannel),
+                                       nn.ReLU(inplace=True), )
+            self.conv = nn.Sequential(nn.Conv2d(inchannel_same + middlechannel, outchannel, 3, padding=1),
+                                      nn.BatchNorm2d(outchannel),
+                                      nn.ReLU(inplace=True),
+
+                                      # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
+                                      )
+
+    def forward(self, uplayer, samlayer):  # the uplayer need to be cropped and upsample
+        tmp = self.block(
+            uplayer)  # if block is transpose then need crop or it needs  pad(self.middle,(0,1,0,0),mode='replicate')
+        uplayer = self.center_crop(tmp, samlayer)
+        return self.conv(torch.cat((uplayer, samlayer), dim=1))
+
+    def center_crop(self, img, target):
+        h, w = img.shape[-2:]
+        th, tw = target.shape[-2:]
+        i = int(round((h - th) / 2.))
+        j = int(round((w - tw) / 2.))
+        return img[..., i:i + th, j:j + tw]
 class UPP(nn.Module):
     def __init__(self):
         super(UPP,self).__init__()
@@ -184,8 +219,8 @@ class UWW(nn.Module):
         self.l2_0=conv(64,128,128)
         self.l3_0=conv(128,256,256)
         self.l4_0=conv(256,512,512)
-        self.middle=conv(512,1024,1024)
-        self.l4_1=pad_up(1024,512,256,256,True)
+        self.middle=conv(512,512,512)
+        self.l4_1=crop_up(512,512,256,256,True)
         self.l3_1=up(512,256,128,128,True)
         self.l3_2=up(256,256+128,128,128,True)
         self.l2_1=up(256,128,64,64,True)
@@ -314,8 +349,8 @@ def test(model):
         model.to(device)
         for image,mask_img in testload:
             image=image.to(device,dtype=dtype)
-            l1,l2,l3,l4=model(image)
-            label=l4.cpu()>0.5
+            l1,l2,l3,l4,l5=model(image)
+            label=l5.cpu()>0.5
             # l1_list.append((l1>0.5).to(torch.long))
             # l2_list.append((l2>0.5).to(torch.long))
             # l3_list.append((l3>0.5).to(torch.long))
@@ -324,7 +359,7 @@ def test(model):
             l2_list.append(l2)
             l3_list.append(l3)
             l4_list.append(l4)
-
+            l5_list.append(l5)
 
 
 
@@ -371,38 +406,38 @@ def my_iou(label_pred,label_mask):
         iou.append((i*j).sum()/(i.sum()+j.sum()-(i*j).sum()))
     return iou
 
-# upp,uss,uww,also need to ad drop=0.2
-# model,loss_list=train(20)
-# torch.save(model.state_dict(),'uplus')
+#upp,uss,uww,also need to ad drop=0.2
+
+# torch.save(model.state_dict(),'uss')
+model=UWW()
+# model.load_state_dict(torch.load('uww'))
+
+model.train()
+model=model.to(device)
+criterion=Diceloss()
+optimize=torch.optim.Adam(model.parameters(),lr=0.001)
+store_loss=[]
+for i in range(20):
+    tmp=0
+    for image,mask in trainload:
+        image,mask=image.to(device,dtype=dtype),mask.to(device,dtype=dtype)
+        optimize.zero_grad()
+        l1,l2,l3,l4,l5=model(image)
+        loss_list=list(map(lambda x,y:criterion(x,y),[l1,l2,l3,l4,l5],[mask]*5))
+        tmp=reduce(lambda x,y:x+y,loss_list)
+        loss=tmp/5
+        loss.backward()
+        optimize.step()
+        tmp=loss.data
+        # print ("loss ",tmp)
+        # break
+    store_loss.append(tmp)
+    print ("{0} epoch ,loss is {1}".format(i,tmp))
+torch.save(model.state_dict(),'uww')
 # model=UPP()
-# # model.load_state_dict(torch.load('uplus'))
-#
-# model.train()
-# model=model.to(device)
-# criterion=Bce_Diceloss()
-# optimize=torch.optim.Adam(model.parameters(),lr=0.001)
-# store_loss=[]
-# for i in range(20):
-#     tmp=0
-#     for image,mask in trainload:
-#         image,mask=image.to(device,dtype=dtype),mask.to(device,dtype=dtype)
-#         optimize.zero_grad()
-#         l1,l2,l3,l4=model(image)
-#         loss_list=list(map(lambda x,y:criterion(x,y),[l1,l2,l3,l4,],[mask]*4))
-#         tmp=reduce(lambda x,y:x+y,loss_list)
-#         loss=tmp/4
-#         loss.backward()
-#         optimize.step()
-#         tmp=loss.data
-#         print ("loss ",tmp)
-#         # break
-#     store_loss.append(tmp)
-#     print ("{0} epoch ,loss is {1}".format(i,tmp))
-# torch.save(model.state_dict(),'uplus')
-# # model=UPP()
-# # model.load_state_dict(torch.load('uplus',map_location='cpu'))
-# img,pred,mask,l=test(model)
-# ap,iou,hist,tmp=label_acc_score(mask,pred,2)
+# model.load_state_dict(torch.load('uplus',map_location='cpu'))
+img,pred,mask,l=test(model)
+ap,iou,hist,tmp=label_acc_score(mask,pred,2)
 # # iu=my_iou(pred,mask)
 # torch_pic(img[0:4],pred[0:4].to(torch.long),mask[0:4].to(torch.long))
 
