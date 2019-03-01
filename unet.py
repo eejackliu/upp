@@ -505,3 +505,4 @@ ap,iou,hist,tmp=label_acc_score(mask,pred,2)
 # okular
 #https://arxiv.org/abs/1505.02496
 # l0   l1
+#https://1drv.ms/u/s!ApwdOxIIFBH19TzDv7nRfH5ZsMNL
