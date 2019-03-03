@@ -404,8 +404,8 @@ class Mobile(nn.Module):
         #     nn.BatchNorm2d(32),
         #     nn.ReLU(True))
         self.first_layer=nn.Sequential(
-            nn.Conv2d(64,32,1),
-            nn.BatchNorm2d(32),
+            nn.Conv2d(64,3,1),
+            nn.BatchNorm2d(3),
             nn.ReLU(True))
         self.pool=vgg.features[6]
         self.l0_0=vgg.features[:6]
@@ -417,7 +417,8 @@ class Mobile(nn.Module):
     def forward(self, input):
         l0_0=self.l0_0(input)
         # l1_0=self.first_layer(torch.cat((self.l1_0(input),self.pool(l0_0)),dim=1))
-        l1_0=self.l1_0(input)+self.first_layer(self.pool(l0_0))
+        # l1_0=self.l1_0(input)+self.first_layer(self.pool(l0_0))
+        l1_0=self.l1_0(self.first_layer(l0_0))
         l2_0=self.l2_0(l1_0)
         l3_0=self.l3_0(l2_0)
         l4_0=self.l4_0(l3_0)
