@@ -11,7 +11,8 @@ from torchvision import transforms
 from torch.utils.data import DataLoader as dataloader
 # import nonechucks as nc
 from voc_seg import my_data,label_acc_score,voc_colormap,seg_target
-vgg=tv.models.vgg11_bn(pretrained=True)
+from MobileNet import MobileNetV2
+vgg=tv.models.vgg13_bn(pretrained=True)
 image_transform=transforms.Compose([transforms.ToTensor(),transforms.Normalize((0.485, 0.456, 0.406),(0.229, 0.224, 0.225))])
 mask_transform=transforms.Compose([transforms.ToTensor()])
 trainset=my_data(transform=image_transform,target_transform=mask_transform)
@@ -258,30 +259,31 @@ class UAA(nn.Module):
                 l0_3,\
                 l0_4
 
+
 class UWW(nn.Module):
     def __init__(self):
         super(UWW,self).__init__()
-        self.l0_0=conv(3,16,16)
-        self.l1_0=conv(16,32,32)
-        self.l2_0=conv(32,64,64)
-        self.l3_0=conv(64,128,128)
-        self.l4_0=conv(128,256,256)
-        self.middle=conv(256,512,512)
-        self.l4_1=crop_up(512,256,128,128,True)
-        self.l3_1=up(256,128,64,64,True)
-        self.l3_2=up(128,128+64,64,64,True)
-        self.l2_1=up(128,64,32,32,True)
-        self.l2_2=up(64,64+32,32,32,True)
-        self.l2_3=up(64,64+32+32,32,32,True)
-        self.l1_1=up(64,32,16,16,True)
-        self.l1_2=up(32,32+16,16,16,True)
-        self.l1_3=up(32,32+16+16,16,16,True)
-        self.l1_4=up(32,32+16+16+16,16,16,True)
-        self.l0_1=up(32,16,8,1,True)
-        self.l0_2=up(16,16+1,8,1,True)
-        self.l0_3=up(16,16+1+1,8,1,True)
-        self.l0_4=up(16,16+1+1+1,8,1,True)
-        self.l0_5=up(16,16+1+1+1+1,8,1,True)
+        self.l0_0=conv(3,8,8)
+        self.l1_0=conv(8,16,16)
+        self.l2_0=conv(16,32,32)
+        self.l3_0=conv(32,64,64)
+        self.l4_0=conv(64,128,128)
+        self.middle=conv(128,128,128)
+        self.l4_1=pad_up(128,128,64,64,True)
+        self.l3_1=up(128,64,32,32,True)
+        self.l3_2=up(64,64+32,32,32,True)
+        self.l2_1=up(64,32,16,16,True)
+        self.l2_2=up(32,32+16,16,16,True)
+        self.l2_3=up(32,32+16+16,16,16,True)
+        self.l1_1=up(32,16,8,8,True)
+        self.l1_2=up(16,16+8,8,8,True)
+        self.l1_3=up(16,16+8+8,8,8,True)
+        self.l1_4=up(16,16+8+8+8,8,8,True)
+        self.l0_1=up(16,8,4,1,True)
+        self.l0_2=up(8,8+1,4,1,True)
+        self.l0_3=up(8,8+1+1,4,1,True)
+        self.l0_4=up(8,8+1+1+1,4,1,True)
+        self.l0_5=up(8,8+1+1+1+1,4,1,True)
         self.pool=nn.MaxPool2d(2)
         # self.f1 =nn.Conv2d(32,1,1)
         # self.f2 =nn.Conv2d(32,1,1)
@@ -318,6 +320,131 @@ class UWW(nn.Module):
                 l0_3,\
                 l0_4,\
                 l0_5
+net=MobileNetV2()
+net.load_state_dict(torch.load('mobilenet_v2.pth.tar'))
+net.features
+# class mobile_up(nn.Module):
+#     def __init__(self,inchannel_low,inchannel_same,middlechannel,outchannel,transpose=False):
+#         super(mobile_up,self).__init__()
+#         if  transpose:
+#             self.block=nn.ConvTranspose2d(middlechannel,outchannel,2,2)  #need try 3,2,1,1
+#             self.conv=nn.Sequential(nn.Conv2d(inchannel_same+inchannel_low,middlechannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True),
+#                                 nn.Conv2d(outchannel,outchannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True),
+#                                 # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
+#                                 )
+#         # else:
+#             # self.block = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+#             #                            nn.Conv2d(inchannel_low, middlechannel, 3, padding=1),
+#             #                            nn.BatchNorm2d(middlechannel),
+#             #                            nn.ReLU(inplace=True), )
+#             # self.conv=nn.Sequential(nn.Conv2d(inchannel_same+middlechannel,outchannel,3,padding=1),
+#             #                     nn.BatchNorm2d(outchannel),
+#             #                     nn.ReLU(inplace=True),
+#             #
+#             #                     # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
+#             #                   )
+#     def forward(self, uplayer,samlayer): #the uplayer need to be cropped and upsample
+#        # tmp=self.block(uplayer)  # if block is transpose then need crop or it needs  pad(self.middle,(0,1,0,0),mode='replicate')
+#         tmp= self.conv(torch.cat((uplayer,samlayer),dim=1))
+#         return self.block(tmp)
+# class mobile_pad_up(nn.Module):
+#     def __init__(self,inchannel_low,inchannel_same,middlechannel,outchannel,transpose=False):
+#         super(mobile_pad_up,self).__init__()
+#         if  transpose:
+#             self.block=nn.ConvTranspose2d(middlechannel,outchannel,2,2)# try 3,2,1,1
+#             self.conv=nn.Sequential(nn.Conv2d(inchannel_same+inchannel_low,middlechannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True),
+#                                 nn.Conv2d(outchannel,outchannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True),
+#                                 # nn.ConvTranspose2d(middlechannel,outchannel,3,2,1,1)
+#                                 )
+#         else:
+#             self.block = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+#                                        nn.Conv2d(inchannel_low, middlechannel, 3, padding=1),
+#                                        nn.BatchNorm2d(middlechannel),
+#                                        nn.ReLU(inplace=True), )
+#             self.conv=nn.Sequential(nn.Conv2d(inchannel_same+middlechannel,outchannel,3,padding=1),
+#                                 nn.BatchNorm2d(outchannel),
+#                                 nn.ReLU(inplace=True),
+#
+#                                 # nn.Upsample(scale_factor=2,mode='bilinear',align_corners=True)
+#                               )
+#     def forward(self, uplayer,samlayer): #the uplayer need to be cropped and upsample
+#         #tmp=self.block(uplayer)  # if block is transpose then need crop or it needs  pad(self.middle,(0,1,0,0),mode='replicate')
+#         # uplayer=torch.nn.functional.pad(tmp,[0,1,0,0],mode='replicate')
+#         tmp=self.conv(torch.cat((uplayer,samlayer),dim=1))
+#         return torch.nn.functional.pad(self.block(tmp),[0,1,0,0],mode='replicate')
+
+class Mobile(nn.Module):
+    def __init__(self):
+        super(Mobile,self).__init__()
+        self.l1_0 = net.features[0:1]     # 32
+        self.l2_0 = net.features[1:4]   # 24
+        self.l3_0 = net.features[4:7]   # 32
+        self.l4_0 = net.features[7:14]  # 96
+        self.middle = net.features[14:15] #320
+        self.l4_1= crop_up(160,96,48,48,True)
+        self.l3_1 = up(96,32,16,16,True)
+        self.l3_2 = up(48,32+16,16,16,True)
+        self.l2_1 = up(32,24,16,16,True)
+        self.l2_2 = up(16,24+16,16,16,True)
+        self.l2_3 = up(16,24+16+16,16,16,True)
+        self.l1_1 = up(24,32,16,16,True)
+        self.l1_2 = up(16,32+16,16,16,True)
+        self.l1_3 = up(16,32+16+16,16,16,True)
+        self.l1_4 = up(16,32+16+16+16,16,16,True)
+        # self.first_layer=nn.Sequential(
+        #     nn.Conv2d(32+64,32,1),
+        #     nn.BatchNorm2d(32),
+        #     nn.ReLU(True))
+        self.first_layer=nn.Sequential(
+            nn.Conv2d(64,32,1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(True))
+        self.pool=vgg.features[6]
+        self.l0_0=vgg.features[:6]
+        self.l0_1=up(32,64,32,1,True)
+        self.l0_2=up(16,64+1,32,1,True)
+        self.l0_3=up(16,64+1+1,32,1,True)
+        self.l0_4=up(16,64+1+1+1,32,1,True)
+        self.l0_5=up(16,64+1+1+1+1,32,1,True)
+    def forward(self, input):
+        l0_0=self.l0_0(input)
+        # l1_0=self.first_layer(torch.cat((self.l1_0(input),self.pool(l0_0)),dim=1))
+        l1_0=self.l1_0(input)+self.first_layer(self.pool(l0_0))
+        l2_0=self.l2_0(l1_0)
+        l3_0=self.l3_0(l2_0)
+        l4_0=self.l4_0(l3_0)
+        middle=self.middle(l4_0)
+        l4_1=self.l4_1(middle,l4_0)
+        l3_1=self.l3_1(l4_0,l3_0)
+        l3_2=self.l3_2(l4_1,torch.cat((l3_0,l3_1),dim=1))
+        l2_1=self.l2_1(l3_0,l2_0)
+        l2_2=self.l2_2(l3_1,torch.cat((l2_0,l2_1),dim=1))
+        l2_3=self.l2_3(l3_2,torch.cat((l2_0,l2_1,l2_2),dim=1))
+        l1_1=self.l1_1(l2_0,l1_0)
+        l1_2=self.l1_2(l2_1,torch.cat((l1_0,l1_1),dim=1))
+        l1_3=self.l1_3(l2_2,torch.cat((l1_0,l1_1,l1_2),dim=1))
+        l1_4=self.l1_4(l2_3,torch.cat((l1_0,l1_1,l1_2,l1_3),dim=1))
+        l0_1=self.l0_1(l1_0,l0_0)
+        l0_2=self.l0_2(l1_1,torch.cat((l0_0,l0_1),dim=1))
+        l0_3=self.l0_3(l1_2,torch.cat((l0_0,l0_1,l0_2),dim=1))
+        l0_4=self.l0_4(l1_3,torch.cat((l0_0,l0_1,l0_2,l0_3),dim=1))
+        l0_5=self.l0_5(l1_4,torch.cat((l0_0,l0_1,l0_2,l0_3,l0_4),dim=1))
+        return  l0_1,\
+                l0_2,\
+                l0_3,\
+                l0_4,\
+                l0_5
+
+
+
 class Diceloss(nn.Module):
     def __init__(self):
         super(Diceloss,self).__init__()
@@ -413,7 +540,7 @@ def test(model):
             pred.append(label.to(torch.long))
             img.append(image.cpu())
             mask.append(mask_img)
-    return torch.cat(img),torch.cat(pred),torch.cat(mask),[l1_list,l2_list,l3_list,l4_list]
+    return torch.cat(img),torch.cat(pred),torch.cat(mask),[l1_list,l2_list,l3_list,l4_list,l5_list]
 
 def picture(img,pred,mask):
     # all must bu numpy object
@@ -455,9 +582,9 @@ def my_iou(label_pred,label_mask):
 
 #upp,uss,uww,also need to ad drop=0.2
 
-# torch.save(model.state_dict(),'uss')
-model=UWW()
-# model.load_state_dict(torch.load('uww'))
+#torch.save(model.state_dict(),'uss')
+model=Mobile()
+# model.load_state_dict(torch.load('mobile'))
 
 model.train()
 model=model.to(device)
@@ -480,13 +607,13 @@ for i in range(20):
         # break
     store_loss.append(tmp)
     print ("{0} epoch ,loss is {1}".format(i,tmp))
-torch.save(model.state_dict(),'uww')
+torch.save(model.state_dict(),'mobile')
 # model=UPP()
 # model.load_state_dict(torch.load('uplus',map_location='cpu'))
 img,pred,mask,l=test(model)
 ap,iou,hist,tmp=label_acc_score(mask,pred,2)
-# # iu=my_iou(pred,mask)
-# torch_pic(img[0:4],pred[0:4].to(torch.long),mask[0:4].to(torch.long))
+# iu=my_iou(pred,mask)
+torch_pic(img[0:4],pred[0:4].to(torch.long),mask[0:4].to(torch.long))
 
 # a=torch.zeros(1,3,320,240)
 # tmp=UNET()
@@ -506,3 +633,4 @@ ap,iou,hist,tmp=label_acc_score(mask,pred,2)
 #https://arxiv.org/abs/1505.02496
 # l0   l1
 #https://1drv.ms/u/s!ApwdOxIIFBH19TzDv7nRfH5ZsMNL
+#https://github.com/tonylins/pytorch-mobilenet-v2
